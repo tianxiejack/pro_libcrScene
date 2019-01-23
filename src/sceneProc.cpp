@@ -22,6 +22,7 @@ SceneProc::SceneProc()
 	m_instanVel.x = m_instanVel.y = 0.f;
 	m_sumDelta.x = m_sumDelta.y = 0.f;
 	m_instanConfd = 0.f;
+	imageSize = cv::Size(0,0);
 }
 
 SceneProc::~SceneProc()
@@ -57,6 +58,34 @@ void SceneProc::SetStandardSize(cv::Size sz)
 	standardSize = sz;
 }
 
+void SceneProc::SetSceneParam(const cv::Mat &image, SceneOptFlow::Params &parameters)
+{
+	if(image.cols<=768){
+		parameters.nfeatures = 100;
+		parameters.nframes = 100;
+		parameters.minDistance = 16.f;
+		parameters.fpMode = GOOD_FEATPOINT;
+		parameters.motionModel_ = LINEAR_SIMILARITY;
+		parameters.ransacParams_ = RansacParams::linearSimilarityMotionStd();
+	}else if(image.cols<=1280){
+		parameters.nfeatures = 100;
+		parameters.nframes = 100;
+		parameters.bZoomHalf = true;
+		parameters.minDistance = 16.f;
+		parameters.fpMode = GOOD_FEATPOINT;
+		parameters.motionModel_ = LINEAR_SIMILARITY;
+		parameters.ransacParams_ = RansacParams::linearSimilarityMotionStd();
+	}else if(image.cols<=1920){
+		parameters.nfeatures = 120;
+		parameters.nframes = 100;
+		parameters.bZoomHalf = true;
+		parameters.minDistance = 20.f;
+		parameters.fpMode = GOOD_FEATPOINT;
+		parameters.motionModel_ = LINEAR_SIMILARITY;
+		parameters.ransacParams_ = RansacParams::linearSimilarityMotionStd();
+	}
+}
+
 void SceneProc::InitSceneLock(const cv::Mat image)
 {
 	SceneState		tpState;
@@ -67,11 +96,16 @@ void SceneProc::InitSceneLock(const cv::Mat image)
 	tpState.confidence = 1.0;
 	tpState.deltaT = 20000;//us
 
+	if((imageSize.width != image.cols || imageSize.height != image.rows ) && !m_ScenePtr.empty()){
+		m_ScenePtr.release();
+	}
+
 	if(m_ScenePtr.empty()){
 		SceneOptFlow::Params parameters;
-		parameters.fpMode = GOOD_FEATPOINT;
-		parameters.motionModel_ = LINEAR_SIMILARITY;
-		parameters.ransacParams_ = RansacParams::linearSimilarityMotionStd();
+//		parameters.fpMode = GOOD_FEATPOINT;
+//		parameters.motionModel_ = LINEAR_SIMILARITY;
+//		parameters.ransacParams_ = RansacParams::linearSimilarityMotionStd();
+		SetSceneParam(image, parameters);
 		m_ScenePtr = SceneOptFlow::createInterface(parameters);
 
 		assert(!m_ScenePtr.empty());
@@ -97,7 +131,7 @@ void SceneProc::InitSceneLock(const cv::Mat image)
 	m_instanConfd = tpState.confidence;
 
 	sceneStatus = RUN_SCENE;
-
+	imageSize = image.size();
 }
 
 void SceneProc::CalSceneLock(const cv::Mat image)
@@ -105,15 +139,27 @@ void SceneProc::CalSceneLock(const cv::Mat image)
 	Point2f mvPos;
 	SceneState		tpState;
 	float fx, fy;
+
+	if(imageSize.width != image.cols || imageSize.height != image.rows){
+		InitSceneLock(image);
+		return;
+	}
+
 	tpState.ts = *((UInt32*)image.data);
 	assert(!m_ScenePtr.empty());
 	assert(!image.empty());
-	assert(tpState.ts>m_bakTS);
+	if(tpState.ts<m_bakTS){
+		printf("%s:curts=%ld, prets=%ld\n",__func__, tpState.ts, m_bakTS);
+		int ncount = m_sceneState.size();
+		if(ncount>0)
+			tpState.ts = m_bakTS + m_sceneState[ncount-1].deltaT;
+	}
+	assert(tpState.ts>=m_bakTS);
 
 	bool iRtn = m_ScenePtr->update(image, mvPos);
 
-	fx = standardSize.width*1.0/image.cols;
-	fy = standardSize.height*1.0/image.rows;
+	fx = 1.0;//standardSize.width*1.0/image.cols;
+	fy = 1.0;//standardSize.height*1.0/image.rows;
 
 	if(m_sceneState.size() >= MAX_SCENE_FRAMES){
 		StateVectorIterator it = m_sceneState.begin();

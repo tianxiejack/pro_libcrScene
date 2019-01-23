@@ -6,6 +6,8 @@
 
 namespace OptFlowTrk{
 
+inline float sqr(float x) { return x * x; }
+
 MaxVarRegionImpl::MaxVarRegionImpl( const SceneOptFlow::Params &parameters )
 {
     isInit = false;
@@ -14,10 +16,12 @@ MaxVarRegionImpl::MaxVarRegionImpl( const SceneOptFlow::Params &parameters )
     grid.clear();
     bestgrid.clear();
     var = 10*10;
-    memset(m_refVar, 0, sizeof(m_refVar));
+
     memset(m_sceneInfo, 0, sizeof(m_sceneInfo));
     m_bOptConf = false;
     memset(m_apce, 0, sizeof(m_apce));
+
+    sceneMatrix = cv::Mat::eye(3, 3, CV_32F);
 }
 
 bool MaxVarRegionImpl::initImpl( const Mat& image, const Rect2d& validBox )
@@ -43,6 +47,8 @@ bool MaxVarRegionImpl::updateImpl( const Mat& image, Point2f& mvPos )
 
 	int i, nsize = m_blk.size();
 
+	 sceneMatrix = cv::Mat::eye(3, 3, CV_32F);
+
 	#pragma omp parallel for
 	for(i=0; i<nsize; i++){
 		cv::Rect roi = m_blk[i].curPos;
@@ -55,6 +61,9 @@ bool MaxVarRegionImpl::updateImpl( const Mat& image, Point2f& mvPos )
 	}else{
 		mvPos= cv::Point2f(0.f, 0.f);
 	}
+
+	sceneMatrix.at<float>(0,2) = mvPos.x;
+	sceneMatrix.at<float>(1,2) = mvPos.y;
 
 	extractMaxVarBlk(image);
 	setRefImage(image);
@@ -153,12 +162,150 @@ static float calEuclidean(SCENE_INFO conf1, SCENE_INFO conf2)
 		optConf.pos.y = ((m_sceneInfo[I].pos.y+m_sceneInfo[J].pos.y)/2.0);
 
 #define REGET_OPT_POS(optConf, I, J, maxIdx)	\
-		if(m_refVar[I]<15 && m_refVar[J]<15 && m_refVar[maxIdx] > 25.0){	\
+		if(m_sceneInfo[I].refVar<15 && m_sceneInfo[J].refVar<15 && m_sceneInfo[maxIdx].refVar > 25.0){	\
 			optConf.opt = max_Conf.opt;	\
 			optConf.pos = max_Conf.pos;	\
-		}else if(m_refVar[I]<15 && m_refVar[J]<15 && m_refVar[maxIdx] < 15){	\
+		}else if(m_sceneInfo[I].refVar<15 && m_sceneInfo[J].refVar<15 && m_sceneInfo[maxIdx].refVar < 15){	\
 			bConf = false;	\
 		}
+
+void MaxVarRegionImpl::clusterAnalysis()//RANSAC method
+{
+	RansacParams params;
+	int nsize = m_blk.size();
+	int clusterNum = nsize;
+	SCENE_INFO	tmpInfo, bestInfo;
+	int count;
+	float   optThred = 0.75;
+
+	params.eps = 0.25;params.prob = 0.99; params.size = 2; params.thresh = 1.0;
+	const int niters = static_cast<int>(ceil(log(1 - params.prob) /
+	                                 log(1 - pow(1 - params.eps, params.size))));
+	 const int npoints = nsize;
+	 if(npoints==0){
+		 memset(&m_curOptConf, 0x00, sizeof(m_curOptConf));
+		 m_bOptConf = false;
+		 return;
+	 }else if(npoints==1){
+		 if(m_sceneInfo[0].opt>optThred && m_sceneInfo[0].refVar>30){
+			 m_curOptConf = m_sceneInfo[0];
+			 m_bOptConf = true;
+		 }else{
+			memset(&m_curOptConf, 0x00, sizeof(m_curOptConf));
+			m_bOptConf = false;
+		 }
+		 return;
+	 }
+	RNG rng(0);
+	vector<int> indices(params.size);
+	vector<SCENE_INFO> subset(params.size);
+	vector<SCENE_INFO> subsetbest(params.size);
+	int ninliersMax = -1;
+	cv::Point2f	p0, p1;
+
+	 for (int iter = 0; iter < niters; ++iter)
+	{
+		for (int i = 0; i < params.size; ++i)
+		{
+			bool ok = false;
+			while (!ok)
+			{
+				ok = true;
+				indices[i] = static_cast<unsigned>(rng) % npoints;
+				for (int j = 0; j < i; ++j)
+					if (indices[i] == indices[j])
+						{ ok = false; break; }
+			}
+		}
+		for (int i = 0; i < params.size; ++i)
+		{
+			subset[i] = m_sceneInfo[indices[i]];
+		}
+
+		count = 0;
+		memset(&tmpInfo, 0x00, sizeof(tmpInfo));
+		for(int i=0; i<params.size; i++){
+			if(subset[i].opt >optThred){
+				tmpInfo.pos.x += subset[i].pos.x;
+				tmpInfo.pos.y += subset[i].pos.y;
+				tmpInfo.opt += subset[i].opt;
+				count++;
+			}
+		}
+		if(count==0){
+			continue;
+		}else{
+			tmpInfo.pos.x /= count;
+			tmpInfo.pos.y /= count;
+			tmpInfo.opt /= count;
+		}
+
+		int _ninliers = 0;
+		for (int i = 0; i < npoints; ++i)
+		{
+			p0 = tmpInfo.pos;
+			p1 = m_sceneInfo[i].pos;
+
+			if (sqr(p0.x - p1.x) + sqr(p0.y - p1.y) < params.thresh * params.thresh && m_sceneInfo[i].opt>optThred){
+				_ninliers++;
+			}
+		}
+		if (_ninliers >= ninliersMax)
+		{
+			bestInfo = tmpInfo;
+			ninliersMax = _ninliers;
+			subsetbest.swap(subset);
+		}
+	}
+
+	 if (ninliersMax < params.size){
+		 if(ninliersMax==-1){
+			 memset(&m_curOptConf, 0x00, sizeof(m_curOptConf));
+			 m_bOptConf = false;
+		 }else{
+			 for (int i = 0; i < npoints; ++i)
+			{
+				p0 = m_sceneInfo[i].pos;
+				p1 = bestInfo.pos;
+
+				if (sqr(p0.x - p1.x) + sqr(p0.y - p1.y) < params.thresh * params.thresh && m_sceneInfo[i].opt>optThred)
+				{
+					if(m_sceneInfo[i].refVar>30.0){
+						m_curOptConf = m_sceneInfo[i];
+						m_bOptConf = true;
+					}else{
+						memset(&m_curOptConf, 0x00, sizeof(m_curOptConf));
+						 m_bOptConf = false;
+					}
+					break;
+				}
+			}
+		 }
+	}else{
+		subset.resize(ninliersMax);
+		for (int i = 0, j = 0; i < npoints; ++i)
+		{
+			p0 = m_sceneInfo[i].pos;
+			p1 = bestInfo.pos;
+
+			if (sqr(p0.x - p1.x) + sqr(p0.y - p1.y) < params.thresh * params.thresh && m_sceneInfo[i].opt>optThred)
+			{
+				subset[j] = m_sceneInfo[i];
+				j++;
+			}
+		}
+		memset(&tmpInfo, 0x00, sizeof(tmpInfo));
+		for(int i=0; i<ninliersMax; i++){
+			tmpInfo.pos.x += subset[i].pos.x;
+			tmpInfo.pos.y += subset[i].pos.y;
+			tmpInfo.opt += subset[i].opt;
+		}
+		m_curOptConf.pos.x = tmpInfo.pos.x/ninliersMax;
+		m_curOptConf.pos.y = tmpInfo.pos.y/ninliersMax;
+		m_curOptConf.opt = tmpInfo.opt/ninliersMax;
+		m_bOptConf = true;
+	}
+}
 
 bool MaxVarRegionImpl::calSceneSimilar(const cv::Mat image)
 {
@@ -175,8 +322,11 @@ bool MaxVarRegionImpl::calSceneSimilar(const cv::Mat image)
 	int nsize = m_blk.size();
 	memset(&optConf, 0x00, sizeof(optConf));
 
-	memset(m_sceneInfo, 0x00, sizeof(m_sceneInfo));
 	memset(m_apce, 0x00, sizeof(m_apce));
+	for(i=0; i<MAX_VAR_BLK; i++){
+		m_sceneInfo[i].opt = 0.f;
+		m_sceneInfo[i].pos = cv::Point2f(0.f,0.f);
+	}
 #pragma omp parallel for
 	for(i=0; i<nsize; i++){
 		compSceneSimilar(m_curSceneMap[i], m_refSceneMap[i],m_sceneInfo[i], m_blk[i], m_apce[i]);
@@ -238,10 +388,10 @@ bool MaxVarRegionImpl::calSceneSimilar(const cv::Mat image)
 	}else{
 		optConf.opt = max_Conf.opt;
 		optConf.pos = max_Conf.pos;
-		if(m_refVar[maxIdx] < 30.0)
+		if(m_sceneInfo[maxIdx].refVar< 30.0)
 			bConf = false;
 		for(i=0, j=0; i<MAX_VAR_BLK; i++){
-			if(m_refVar[i]>25.0)
+			if(m_sceneInfo[i].refVar>25.0)
 				j++;
 		}
 		if(j>2){
@@ -422,14 +572,16 @@ void MaxVarRegionImpl::setRefImage(cv::Mat image)
 //	image.copyTo(image_ref);
 	int i, nsize = m_blk.size();
 
-	memset(m_refVar, 0x00, sizeof(m_refVar));
+	for(i=0; i<MAX_VAR_BLK; i++){
+		m_sceneInfo[i].refVar = 0.f;
+	}
 #pragma omp parallel for
 	for(i=0; i<nsize; i++){
 		cv::Rect roi = m_blk[i].refPos;
 		image(roi).copyTo(m_refSceneMap[i]);
 		 Scalar stdev, mean;
 		 meanStdDev(m_refSceneMap[i],mean,stdev);
-		 m_refVar[i] = stdev.val[0];
+		 m_sceneInfo[i].refVar = stdev.val[0];
 	}
 }
 

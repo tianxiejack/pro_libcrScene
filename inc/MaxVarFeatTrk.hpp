@@ -39,6 +39,8 @@ protected:
 
 	bool updateImpl( const Mat& image, Point2f& mvPos );
 
+	cv::Mat getSceneMatrixImpl(){return sceneMatrix;};
+
 	void getFeatPointsImpl(std::vector<Point2f> &fpVector);
 
 	void getMaxVarRegionsImpl(std::vector<cv::Rect> &rcVector){};
@@ -78,6 +80,7 @@ private:
 	  std::vector<float> errors;
 
 	  TermCriteria termcrit;
+	  cv::Mat sceneMatrix;
 };
 
 }

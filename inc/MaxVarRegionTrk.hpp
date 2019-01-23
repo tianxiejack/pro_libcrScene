@@ -20,7 +20,13 @@ typedef struct _scene_blk_t{
 typedef struct _scene_info{
 	cv::Point2f		pos;
 	float				opt;
+	float 				refVar;
 }SCENE_INFO;
+
+typedef struct _cluster_t{
+	std::vector<int> indexVec;
+	cv::Point2f		pos;
+}CLUSTER_OBJ;
 
 class MaxVarRegionImpl: public SceneOptFlow{
 
@@ -34,6 +40,8 @@ protected:
 	void uninitImpl(){};
 
 	bool updateImpl( const Mat& image, Point2f& mvPos );
+
+	cv::Mat getSceneMatrixImpl(){return sceneMatrix;};
 
 	void getFeatPointsImpl(std::vector<Point2f> &fpVector){};
 
@@ -53,6 +61,8 @@ protected:
 
 	bool calSceneSimilar(const cv::Mat image);
 
+	void clusterAnalysis();
+
 	SceneOptFlow::Params params;
 
 	SCENE_INFO		m_curOptConf;
@@ -69,7 +79,6 @@ private:
 
 	cv::Mat						m_refSceneMap[MAX_VAR_BLK];
 	cv::Mat						m_curSceneMap[MAX_VAR_BLK];
-	float 							m_refVar[MAX_VAR_BLK];
 	SCENE_INFO				m_sceneInfo[MAX_VAR_BLK];
 	float							m_apce[MAX_VAR_BLK];
 
@@ -77,6 +86,8 @@ private:
 	cv::Mat iisum;
 	cv::Mat iisqsum;
 	float var;//threshold
+
+	 cv::Mat sceneMatrix;
 };
 
 

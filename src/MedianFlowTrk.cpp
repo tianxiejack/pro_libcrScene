@@ -347,7 +347,7 @@ bool MedianFlowTrackerImpl::medianFlowImpl(Mat oldImage,Mat newImage,Rect2d& old
 
     std::vector<uchar> status(pointsToTrackOld.size());
     std::vector<float> errors(pointsToTrackOld.size());
-    calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,pointsToTrackOld,pointsToTrackNew,status,errors,Size(3,3),3,termcrit,0);
+    calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,pointsToTrackOld,pointsToTrackNew,status,errors,Size(3,3),5,termcrit,0);
     dprintf(("\t%d after LK forward\n",(int)pointsToTrackOld.size()));
 
     std::vector<Point2f> di;

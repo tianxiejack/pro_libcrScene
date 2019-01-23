@@ -19,6 +19,8 @@ protected:
 
 	bool updateImpl( const Mat& image, Point2f& mvPos );
 
+	cv::Mat getSceneMatrixImpl(){return sceneMatrix;};
+
 	void getFeatPointsImpl(std::vector<Point2f> &fpVector);
 
 	void  setRefImage(cv::Mat image){ image.copyTo(image_ref);};
@@ -33,6 +35,7 @@ private:
 	cv::Mat image_ref;
 	cv::Mat featImg_ref;
 	int 		m_frameIdx;
+	cv::Mat sceneMatrix;
 };
 
 

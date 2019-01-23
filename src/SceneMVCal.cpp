@@ -7,6 +7,7 @@ SceneMVCalImpl::SceneMVCalImpl( const SceneOptFlow::Params &parameters )
     isInit = false;
     m_frameIdx = 0;
     params =  parameters;
+    sceneMatrix = Mat::eye(3, 3, CV_32F);
 }
 
 void SceneMVCalImpl::getFeatPointsImpl(std::vector<Point2f> &fpVector)
@@ -31,6 +32,8 @@ bool SceneMVCalImpl::updateImpl( const Mat& image, Point2f& mvPos )
 	cv::Point minLoc,maxLoc;
 	int64 tstart;
 
+	sceneMatrix = cv::Mat::eye(3,3, CV_32F);
+
 	imageRect.x = imageRect.y = 64;
 	imageRect.width = image.cols - imageRect.x*2;
 	imageRect.height = image.rows - imageRect.y*2;
@@ -48,6 +51,8 @@ bool SceneMVCalImpl::updateImpl( const Mat& image, Point2f& mvPos )
 	}else{
 		mvPos = cv::Point2f((float)(maxLoc.x-imageRect.x), (float)(maxLoc.y-imageRect.y));
 	}
+	sceneMatrix.at<float>(0,2) = mvPos.x;
+	sceneMatrix.at<float>(1,2) = mvPos.y;
 
 	featMap.copyTo(featImg_ref);
 

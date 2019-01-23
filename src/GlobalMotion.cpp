@@ -243,8 +243,6 @@ Mat estimateGlobalMotionRobust(
     if (ninliers)
         *ninliers = ninliersMax;
 
-
-
     return bestM;
 }
 

@@ -1,5 +1,7 @@
 #include "GetFeatPoint.hpp"
 #include "SceneOptFlow.hpp"
+#include <stdio.h>
+#include <stdlib.h>
 
 #define clip( val, minv, maxv )    (( (val) = ((val) < (minv) ? (minv) : (val) ) ) > (maxv) ? (maxv) : (val) )
 
@@ -25,12 +27,19 @@ void FeatPointExtract::extractGoodFP(cv::Mat src_gray, bool bScaleDetect, double
 
 	CV_Assert(src_gray.channels() == 1);
 
+	int64 tstart = getTickCount();
 	if(bScaleDetect){
-		resize(src_gray, detectImage, cv::Size(src_gray.cols/2, src_gray.rows/2));
+#if 1
+		resize(src_gray, detectImage, cv::Size(src_gray.cols/2, src_gray.rows/2));//cost time litter
+#else
+		pyrDown(src_gray, detectImage);
+#endif
 		minDistance /=2.0;
 	}else{
 		detectImage = src_gray;
 	}
+//	printf("resize: time = %f sec \n\n", ( (getTickCount() - tstart)/getTickFrequency()) );
+
 	cv::goodFeaturesToTrack( detectImage,
 					fpVector,
 				   maxCorners,

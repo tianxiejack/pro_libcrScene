@@ -72,6 +72,7 @@ public:
 		float   minDistance;
 		bool   bRejectOutliner;
 		bool   bFBTrk;
+		bool	bZoomHalf;//shrink image
 		int pointsInGrid;
 
 		float maxRmse_;
@@ -90,6 +91,8 @@ public:
 
 	bool update( const Mat& image, Point2f& mvPos );
 
+	cv::Mat getSceneMatrix();
+
 	void getFeatPoints(std::vector<Point2f> &fpVector);
 
 	void getMaxVarRegions(std::vector<cv::Rect> &rcVector);
@@ -107,6 +110,8 @@ protected:
 	virtual void getFeatPointsImpl(std::vector<Point2f> &fpVector) = 0;
 
 	virtual void getMaxVarRegionsImpl(std::vector<cv::Rect> &rcVector) = 0;
+
+	virtual cv::Mat getSceneMatrixImpl() = 0;
 
 	bool isInit;
 

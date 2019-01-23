@@ -53,6 +53,15 @@ bool SceneOptFlow::update( const Mat& image, Point2f& mvPos )
 	return updateImpl( image, mvPos );
 }
 
+cv::Mat SceneOptFlow::getSceneMatrix()
+{
+	if( !isInit )
+	{
+		return Mat::eye(3, 3, CV_32F);
+	}
+	return getSceneMatrixImpl();
+}
+
 void SceneOptFlow::getFeatPoints(std::vector<Point2f> &fpVector)
 {
 	fpVector.clear();
@@ -124,6 +133,8 @@ protected:
 
 	bool updateImpl( const Mat& image, Point2f& mvPos );
 
+	cv::Mat getSceneMatrixImpl(){return sceneMatrix;};
+
 	void getFeatPointsImpl(std::vector<Point2f> &fpVector);
 
 	void getMaxVarRegionsImpl(std::vector<cv::Rect> &rcVector){};
@@ -155,6 +166,7 @@ protected:
 
 private:
 	cv::Mat image_ref;
+	cv::Mat sceneMatrix;
 	int		m_framIdx;
 	TermCriteria termcrit;
 
@@ -174,7 +186,12 @@ private:
 
 bool SceneOptFlowImpl::initImpl( const Mat& image, const Rect2d& validBox )
 {
-	setRefImage(image);
+	if(params.bZoomHalf){
+//		resize(image, image_ref, cv::Size(image.cols/2, image.rows/2),  0.0, 0.0, INTER_CUBIC);
+		resize(image, image_ref, cv::Size(image.cols/2, image.rows/2));
+	}else{
+		setRefImage(image);
+	}
 
 	m_framIdx = 0;
 	for(int i=0; i<params.nfeatures; i++){
@@ -189,7 +206,7 @@ bool SceneOptFlowImpl::initImpl( const Mat& image, const Rect2d& validBox )
 		m_curFeatPt[i].type = IDLE_FEATPOINT;
 		m_curFeatPt[i].pos = cv::Point2f(-1.f, -1.f);
 	}
-	selectFeatPoints(image, true);
+	selectFeatPoints(image_ref, true);
 
 	return true;
 }
@@ -206,7 +223,7 @@ void SceneOptFlowImpl::continueframeTrk(const cv::Mat oldImage_gray,const cv::Ma
 	}
 
 	if(nsize > 0){
-		calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,pointsToTrackOld,pointsToTrackNew,status,errors,Size(3,3),3,termcrit,0);
+		calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,pointsToTrackOld,pointsToTrackNew,status,errors,Size(5,5),4,termcrit,0);
 	}
 
 	if(params.bFBTrk){
@@ -245,7 +262,7 @@ void SceneOptFlowImpl::betweenframeTrk(const cv::Mat oldImage_gray,const cv::Mat
 	}
 
 	if(nsize > 0){
-		calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,pointsToTrackOld,pointsToTrackNew,status,errors,Size(3,3),3,termcrit,0);
+		calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,pointsToTrackOld,pointsToTrackNew,status,errors,Size(5,5),4,termcrit,0);
 	}
 
 	if(params.bFBTrk){
@@ -287,7 +304,7 @@ void SceneOptFlowImpl::ForwardBackTrk(const cv::Mat oldImage_gray,const cv::Mat 
 	}
 
 	if(npoints>0){
-		calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,newPoints, pointsToTrackReprojection,fb_status,fb_errors,Size(3,3),3,termcrit,0);
+		calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,newPoints, pointsToTrackReprojection,fb_status,fb_errors,Size(5,5),4,termcrit,0);
 	}
 
 	FBerror.resize(newPoints.size());
@@ -307,19 +324,27 @@ void SceneOptFlowImpl::ForwardBackTrk(const cv::Mat oldImage_gray,const cv::Mat 
 	}
 }
 
+static unsigned int printCount = 0;
 bool SceneOptFlowImpl::updateImpl( const Mat& image, Point2f& mvPos )
 {
 	std::vector<Point2f> pointsToTrackOld,pointsToTrackNew;
 	Mat oldImage_gray,newImage_gray;
 	bool iRtn = true;
 
-	oldImage_gray = image_ref;
-	newImage_gray = image;
+	if(params.bZoomHalf){
+		oldImage_gray = image_ref;
+//		resize(image, newImage_gray, cv::Size(image.cols/2, image.rows/2), 0.0, 0.0, INTER_CUBIC);
+		resize(image, newImage_gray, cv::Size(image.cols/2, image.rows/2));
+	}else{
+		oldImage_gray = image_ref;
+		newImage_gray = image;
+	}
 
 	CV_Assert(oldImage_gray.channels() == 1);
 	CV_Assert(newImage_gray.channels() == 1);
 
 	m_framIdx++;
+	sceneMatrix = cv::Mat::eye(3,3, CV_32F);
 
 	status.clear();
 	errors.clear();
@@ -354,11 +379,11 @@ bool SceneOptFlowImpl::updateImpl( const Mat& image, Point2f& mvPos )
 		}
 	}
 	if(params.bRejectOutliner){
-		rejectOutlinerProc(image);
+		rejectOutlinerProc(newImage_gray);
 	}
 
 	static MotionModel motionModelBK = LINEAR_SIMILARITY;
-	bool bJudge = judgeFPDistrib(image, pointsGood_);
+	bool bJudge = judgeFPDistrib(newImage_gray, pointsGood_);
 	if(bJudge){
 		params.motionModel_ = LINEAR_SIMILARITY;
 		params.ransacParams_ = (RansacParams::linearSimilarityMotionStd());
@@ -375,27 +400,61 @@ bool SceneOptFlowImpl::updateImpl( const Mat& image, Point2f& mvPos )
 
 	float rmse;
 	int ninliers;
+	std::vector<Point2f> pointsPrevGood_tmp, pointsGood_tmp;
+	pointsPrevGood_tmp.clear();
+	pointsGood_tmp.clear();
+
+	pointsPrevGood_tmp.assign(pointsPrevGood_.begin(), pointsPrevGood_.end());
+	pointsGood_tmp.assign(pointsGood_.begin(), pointsGood_.end());
+
+	if(params.bZoomHalf){
+		for(i=0; i<pointsPrevGood_.size(); i++){
+			pointsPrevGood_tmp[i].x = pointsPrevGood_[i].x*2;
+			pointsPrevGood_tmp[i].y = pointsPrevGood_[i].y*2;
+		}
+		for(i=0; i<pointsGood_.size(); i++){
+			pointsGood_tmp[i].x = pointsGood_[i].x*2;
+			pointsGood_tmp[i].y = pointsGood_[i].y*2;
+		}
+	}
 #if 1
-	Mat M = estimateGlobalMotionRobust(pointsPrevGood_, pointsGood_, params.motionModel_, params.ransacParams_, &rmse, &ninliers);
+	Mat M = estimateGlobalMotionRobust(pointsPrevGood_tmp, pointsGood_tmp, params.motionModel_, params.ransacParams_, &rmse, &ninliers);
 #else
 	cv::Size sz = image.size();
-	Mat M = estimateGlobalMotionGMS(pointsPrevGood_, pointsGood_, sz, params.motionModel_, params.ransacParams_, &rmse, &ninliers);
+	Mat M = estimateGlobalMotionGMS(pointsPrevGood_tmp, pointsGood_tmp, sz, params.motionModel_, params.ransacParams_, &rmse, &ninliers);
 #endif
+	pointsPrevGood_.clear();
+	pointsGood_.clear();
+	pointsPrevGood_.assign(pointsPrevGood_tmp.begin(), pointsPrevGood_tmp.end());
+	pointsGood_.assign(pointsGood_tmp.begin(), pointsGood_tmp.end());
 
+	if(params.bZoomHalf){
+		for(i=0; i<pointsPrevGood_tmp.size(); i++){
+			pointsPrevGood_[i].x = pointsPrevGood_tmp[i].x/2;
+			pointsPrevGood_[i].y = pointsPrevGood_tmp[i].y/2;
+		}
+		for(i=0; i<pointsGood_tmp.size(); i++){
+			pointsGood_[i].x = pointsGood_tmp[i].x/2;
+			pointsGood_[i].y = pointsGood_tmp[i].y/2;
+		}
+	}
+
+	printCount++;
 	if (rmse > params.maxRmse_ || static_cast<float>(ninliers) / pointsGood_.size() < params.minInlierRatio_){
-		printf("rmse=%f, ninliers=%d, pointsGood_size=%d \n",rmse, ninliers, pointsGood_.size());
+//		printf("rmse=%f, ninliers=%d, pointsGood_size=%d \n",rmse, ninliers, pointsGood_tmp.size());
 		M = Mat::eye(3, 3, CV_32F);
 		iRtn = false;
 	}
 
 	mvPos.x = M.at<float>(0,2);
 	mvPos.y = M.at<float>(1,2);
+	sceneMatrix = M.clone();
 
 	tstart = getTickCount();
-	selectFeatPoints(image);
+	selectFeatPoints(newImage_gray);
 //	printf("SelectFeatPoints: time = %f sec \n\n", ( (getTickCount() - tstart)/getTickFrequency()) );
 
-	setRefImage(image);
+	setRefImage(newImage_gray);
 
 	return iRtn;
 }
@@ -492,7 +551,12 @@ void SceneOptFlowImpl::getFeatPointsImpl(std::vector<Point2f> &fpVector)
 	}else{
 		nsize = pointsGood_.size();
 		for(i=0; i<nsize; i++){
-			fpVector.push_back(pointsGood_[i]);
+			if(params.bZoomHalf){
+				cv::Point2f	tmpPt = cv::Point2f(pointsGood_[i].x*2, pointsGood_[i].y*2);
+				fpVector.push_back(tmpPt);
+			}else{
+				fpVector.push_back(pointsGood_[i]);
+			}
 		}
 	}
 }
@@ -649,6 +713,8 @@ SceneOptFlowImpl::SceneOptFlowImpl( const SceneOptFlow::Params &parameters )
     m_refFeatPt.resize(params.nfeatures);
     m_curFeatPt.resize(params.nfeatures);
     m_fpVector.resize(params.nfeatures);
+
+    sceneMatrix = Mat::eye(3, 3, CV_32F);
 }
 
 Ptr<SceneOptFlow> SceneOptFlow::createInterface(const SceneOptFlow::Params &parameters)
@@ -669,12 +735,13 @@ SceneOptFlow::Params::Params()//:ransacParams_(RansacParams::linearSimilarityMot
 	fpMode = GOOD_FEATPOINT;//ORB_FEATPOINT;//MATCH_FEATPOINT;//
 
 	nfeatures = 100;//max count
-	nframes = 150;
+	nframes = 100;
 	minDistance = 16.f;
 	bContinueFrms = false;//true;
 	bScaleDetect = true;
 	bRejectOutliner = false;
 	bFBTrk = false;//true;
+	bZoomHalf = false;
 	pointsInGrid = 6;
 
 	motionModel_ = LINEAR_SIMILARITY;

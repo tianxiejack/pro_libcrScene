@@ -17,6 +17,7 @@ MaxVarFeatImpl::MaxVarFeatImpl( const SceneOptFlow::Params &parameters )
     grid.clear();
     bestgrid.clear();
     var = 10*10;
+    sceneMatrix = cv::Mat::eye(3, 3, CV_32F);
 }
 
 bool MaxVarFeatImpl::initImpl( const Mat& image, const Rect2d& validBox )
@@ -44,6 +45,8 @@ bool MaxVarFeatImpl::updateImpl( const Mat& image, Point2f& mvPos )
 
 	CV_Assert(oldImage_gray.channels() == 1);
 	CV_Assert(newImage_gray.channels() == 1);
+
+	 sceneMatrix = cv::Mat::eye(3, 3, CV_32F);
 
 	status.clear();
 	errors.clear();
@@ -105,6 +108,8 @@ bool MaxVarFeatImpl::updateImpl( const Mat& image, Point2f& mvPos )
 
 	mvPos.x = M.at<float>(0,2);
 	mvPos.y = M.at<float>(1,2);
+
+	sceneMatrix = M.clone();
 
 	tstart = getTickCount();
 	extractMaxVarBlk(image);
@@ -193,7 +198,6 @@ bool MaxVarFeatImpl::judgeFPDistrib(const Mat &image, const std::vector<Point2f>
 
 	return iRtn;
 }
-
 
 void MaxVarFeatImpl::getFeatPointsImpl(std::vector<Point2f> &fpVector)
 {

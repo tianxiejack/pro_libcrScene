@@ -43,13 +43,14 @@ public:
 
 	SCENE_STATUS GetSceneStatus(){return sceneStatus;};
 	void SetSceneStatus(SCENE_STATUS status){sceneStatus = status;};
-
+	void SetSceneParam(const cv::Mat &image, SceneOptFlow::Params &parameters);
 
 public:
 
 	cv::Point2f						m_filterVel;//ukf filter result
 	cv::Point2f						m_instanVel;
-	float							m_instanConfd;
+	float								m_instanConfd;
+	cv::Size							imageSize;
 
 protected:
 
