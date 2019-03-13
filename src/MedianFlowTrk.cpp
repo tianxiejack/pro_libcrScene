@@ -539,6 +539,7 @@ void MedianFlowTrackerImpl::check_FB_CR(const Mat& oldImage,const Mat& newImage,
     if(FBerror.size() == 0)
     	return;
     double FBerrorMedian=getMedian(FBerror);
+    FBerrorMedian += 0.05;
     dprintf(("point median=%f\n",FBerrorMedian));
     dprintf(("FBerrorMedian=%f\n",FBerrorMedian));
 
@@ -572,6 +573,7 @@ void MedianFlowTrackerImpl::check_NCC(const Mat& oldImage,const Mat& newImage,
 		return;
 	}
 	float median = getMedian(NCC);
+	median -= 0.05;
 	for(int i = 0; i < (int)oldPoints.size(); i++) {
         status[i] = (status[i] && (NCC[i]>median));
 	}
