@@ -16,8 +16,8 @@ typedef unsigned int UInt32;
 #define		MAX_SCENE_FRAMES		200
 
 typedef struct{
-	UInt32 ts; //us
-	UInt32 deltaT;
+	uint64_t ts; //us
+	uint64_t deltaT;
 	cv::Point2f	mv;
 	float confidence;
 }SceneState;
@@ -43,14 +43,13 @@ public:
 
 	SCENE_STATUS GetSceneStatus(){return sceneStatus;};
 	void SetSceneStatus(SCENE_STATUS status){sceneStatus = status;};
-	void SetSceneParam(const cv::Mat &image, SceneOptFlow::Params &parameters);
+
 
 public:
 
 	cv::Point2f						m_filterVel;//ukf filter result
 	cv::Point2f						m_instanVel;
-	float								m_instanConfd;
-	cv::Size							imageSize;
+	float							m_instanConfd;
 
 protected:
 
@@ -63,7 +62,7 @@ protected:
 
 	RNG m_rng;
 	double	m_accNoise;
-	UInt32 m_bakTS;
+	uint64_t m_bakTS;
 
 private:
 	cv::Size	standardSize;
