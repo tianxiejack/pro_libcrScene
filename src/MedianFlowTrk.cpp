@@ -347,7 +347,7 @@ bool MedianFlowTrackerImpl::medianFlowImpl(Mat oldImage,Mat newImage,Rect2d& old
 
     std::vector<uchar> status(pointsToTrackOld.size());
     std::vector<float> errors(pointsToTrackOld.size());
-    calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,pointsToTrackOld,pointsToTrackNew,status,errors,Size(3,3),5,termcrit,0);
+    calcOpticalFlowPyrLK(oldImage_gray, newImage_gray,pointsToTrackOld,pointsToTrackNew,status,errors,Size(3,3),6,termcrit,0);
     dprintf(("\t%d after LK forward\n",(int)pointsToTrackOld.size()));
 
     std::vector<Point2f> di;
@@ -386,7 +386,7 @@ bool MedianFlowTrackerImpl::medianFlowImpl(Mat oldImage,Mat newImage,Rect2d& old
         di[i]-=mDisplacement;
         displacements.push_back(sqrt(di[i].ddot(di[i])));
     }
-    if(getMedian(displacements,(int)displacements.size())>20){
+    if(getMedian(displacements,(int)displacements.size())>30){
         return false;
     }
 
@@ -500,7 +500,7 @@ void MedianFlowTrackerImpl::check_FB(const Mat& oldImage,const Mat& newImage,
     std::vector<float> errors(oldPoints.size());
     std::vector<double> FBerror(oldPoints.size());
     std::vector<Point2f> pointsToTrackReprojection;
-    calcOpticalFlowPyrLK(newImage, oldImage,newPoints,pointsToTrackReprojection,LKstatus,errors,Size(3,3),5,termcrit,0);
+    calcOpticalFlowPyrLK(newImage, oldImage,newPoints,pointsToTrackReprojection,LKstatus,errors,Size(3,3),6,termcrit,0);
 
     for(int i=0;i<(int)oldPoints.size();i++){
         FBerror[i]=l2distance(oldPoints[i],pointsToTrackReprojection[i]);
@@ -526,7 +526,7 @@ void MedianFlowTrackerImpl::check_FB_CR(const Mat& oldImage,const Mat& newImage,
     std::vector<float> errors(oldPoints.size());
     std::vector<double> FBerror;
     std::vector<Point2f> pointsToTrackReprojection;
-    calcOpticalFlowPyrLK(newImage, oldImage,newPoints,pointsToTrackReprojection,LKstatus,errors,Size(3,3),5,termcrit,0);
+    calcOpticalFlowPyrLK(newImage, oldImage,newPoints,pointsToTrackReprojection,LKstatus,errors,Size(3,3),6,termcrit,0);
 
     std::vector<int> featIdxVect;
     FBerror.clear();
