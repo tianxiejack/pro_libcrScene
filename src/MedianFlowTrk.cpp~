@@ -618,7 +618,7 @@ Ptr<MedianFlowTracker> MedianFlowTracker::CreateMedianFlowTrk(const MedianFlowTr
 MedianFlowTracker::Params::Params()
 {
 	pointsInGrid=10;
-	bZoomHalf = false;
+bZoomHalf = false;
 }
 
 }
